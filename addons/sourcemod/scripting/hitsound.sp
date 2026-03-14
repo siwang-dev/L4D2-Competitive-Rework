@@ -11,7 +11,6 @@ public void OnPluginStart()
 {
     g_hHitSound = CreateConVar("hitsound_file", DEFAULT_SOUND, "Hit sound sample path. Change this if another plugin blocks the default sample.");
     g_hHitSoundDebug = CreateConVar("hitsound_debug", "0", "Enable debug logging for hitsound (0=off, 1=on).");
-    // Toggle at runtime with: sm_cvar hitsound_debug 1
     g_hHitSound.GetString(g_sHitSound, sizeof(g_sHitSound));
     g_hHitSound.AddChangeHook(OnSoundChanged);
 
