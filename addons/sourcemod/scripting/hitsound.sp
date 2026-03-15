@@ -5,7 +5,7 @@ ConVar g_hHitSound;
 ConVar g_hHitSoundDebug;
 char g_sHitSound[PLATFORM_MAX_PATH];
 
-#define DEFAULT_SOUND "player/spitter/spitter_acid_impact.wav"
+#define DEFAULT_SOUND "ui/littlereward.wav"
 
 public void OnPluginStart()
 {
@@ -45,7 +45,8 @@ public Action Event_InfectedHurt(Event event, const char[] name, bool dontBroadc
 
     if(attacker > 0 && attacker <= MaxClients && IsClientInGame(attacker))
     {
-        EmitSoundToClient(attacker, g_sHitSound);
+        StopSound(attacker, SNDCHAN_AUTO, g_sHitSound);
+        EmitSoundToClient(attacker, g_sHitSound, attacker, SNDCHAN_AUTO, SNDLEVEL_NORMAL, SND_NOFLAGS, 1.0, SNDPITCH_NORMAL);
 
         if (g_hHitSoundDebug.BoolValue)
         {
@@ -65,7 +66,8 @@ public Action Event_PlayerHurt(Event event, const char[] name, bool dontBroadcas
     {
         if(GetClientTeam(victim) == 3)
         {
-            EmitSoundToClient(attacker, g_sHitSound);
+            StopSound(attacker, SNDCHAN_AUTO, g_sHitSound);
+            EmitSoundToClient(attacker, g_sHitSound, attacker, SNDCHAN_AUTO, SNDLEVEL_NORMAL, SND_NOFLAGS, 1.0, SNDPITCH_NORMAL);
 
             if (g_hHitSoundDebug.BoolValue)
             {
