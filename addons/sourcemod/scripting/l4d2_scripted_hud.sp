@@ -1573,6 +1573,16 @@ void GetHUD4_Text(char[] output, int size)
 {
     FormatEx(output, size, "\0");
 
+    bool bTeamsFlipped = (GameRules_GetProp("m_bAreTeamsFlipped") != 0);
+    int iSurvivorLogicalTeam = bTeamsFlipped ? 1 : 0;
+    int iInfectedLogicalTeam = bTeamsFlipped ? 0 : 1;
+
+    int iSurvivorScore = GetZoneModCampaignScore(iSurvivorLogicalTeam);
+    int iInfectedScore = GetZoneModCampaignScore(iInfectedLogicalTeam);
+    int iScoreDiff = iSurvivorScore - iInfectedScore;
+
+    FormatEx(output, size, "生还者分数: %d\n感染者分数: %d\n分差: %+d", iSurvivorScore, iInfectedScore, iScoreDiff);
+
     // for (int client = 1; client <= MaxClients; client++)
     // {
         // if (!IsClientInGame(client))
@@ -1592,6 +1602,17 @@ void GetHUD4_Text(char[] output, int size)
         // else
             // Format(output, size, "%s\n%N", output, client);
     // }
+}
+
+int GetZoneModCampaignScore(int logicalTeam)
+{
+    int score = L4D2Direct_GetVSCampaignScore(logicalTeam);
+
+    // ZoneMod 环境下偶发 Direct 分数为 0，退回到通用 TeamScore 作为兜底。
+    if (score <= 0)
+        score = L4D_GetTeamScore(logicalTeam, true);
+
+    return score;
 }
 
 public Action ShowSpecHud(int client, int args)

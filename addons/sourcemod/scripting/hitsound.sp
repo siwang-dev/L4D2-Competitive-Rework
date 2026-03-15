@@ -5,13 +5,12 @@ ConVar g_hHitSound;
 ConVar g_hHitSoundDebug;
 char g_sHitSound[PLATFORM_MAX_PATH];
 
-#define DEFAULT_SOUND "player/spitter/spitter_miss_01.wav"
+#define DEFAULT_SOUND "player/spitter/spitter_acid_impact.wav"
 
 public void OnPluginStart()
 {
-    g_hHitSound = CreateConVar("hitsound_file", DEFAULT_SOUND, "Hit sound sample path. Must exist on both server and client; change this if another plugin blocks the default sample.");
+    g_hHitSound = CreateConVar("hitsound_file", DEFAULT_SOUND, "Hit sound sample path. Change this if another plugin blocks the default sample.");
     g_hHitSoundDebug = CreateConVar("hitsound_debug", "0", "Enable debug logging for hitsound (0=off, 1=on).");
-    // Toggle at runtime with: sm_cvar hitsound_debug 1
     g_hHitSound.GetString(g_sHitSound, sizeof(g_sHitSound));
     g_hHitSound.AddChangeHook(OnSoundChanged);
 
