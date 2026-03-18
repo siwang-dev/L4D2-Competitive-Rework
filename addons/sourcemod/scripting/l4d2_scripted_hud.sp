@@ -56,6 +56,7 @@ public Plugin myinfo =
 //#define REQUIRE_PLUGIN
 #undef REQUIRE_PLUGIN
 #include <witch_and_tankifier>
+#include <l4d2_hybrid_scoremod>
 
 // ====================================================================================================
 // Pragmas
@@ -674,7 +675,7 @@ public void OnLibraryAdded(const char[] name)
 }
 public void OnLibraryRemoved(const char[] name)
 {
-    if ( StrEqual(name, "witch_and_tankifier") ) { g_bWitchAndTankSystemAvailable = true; }
+    if ( StrEqual(name, "witch_and_tankifier") ) { g_bWitchAndTankSystemAvailable = false; }
 }
 
 /****************************************************************************************************/
@@ -1582,6 +1583,18 @@ void GetHUD4_Text(char[] output, int size)
     int iScoreDiff = iSurvivorScore - iInfectedScore;
 
     FormatEx(output, size, "生还者分数: %d\n感染者分数: %d\n分差: %+d", iSurvivorScore, iInfectedScore, iScoreDiff);
+
+    if (GetFeatureStatus(FeatureType_Native, "SMPlus_GetHealthBonus") == FeatureStatus_Available
+    && GetFeatureStatus(FeatureType_Native, "SMPlus_GetDamageBonus") == FeatureStatus_Available
+    && GetFeatureStatus(FeatureType_Native, "SMPlus_GetPillsBonus") == FeatureStatus_Available)
+    {
+        int iHealthBonus = SMPlus_GetHealthBonus();
+        int iDamageBonus = SMPlus_GetDamageBonus();
+        int iPillsBonus = SMPlus_GetPillsBonus();
+        int iTotalBonus = iHealthBonus + iDamageBonus + iPillsBonus;
+
+        Format(output, size, "%s\n奖励: %d (HB:%d / DB:%d / Pills:%d)", output, iTotalBonus, iHealthBonus, iDamageBonus, iPillsBonus);
+    }
 
     // for (int client = 1; client <= MaxClients; client++)
     // {
