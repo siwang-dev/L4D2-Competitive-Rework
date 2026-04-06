@@ -12,20 +12,13 @@
 #define COLOR_LGREEN  "\x03"
 #define COLOR_GREEN   "\x04"
 #define COLOR_YELLOW  "\x05"
-#define COLOR_INFO    "\x03"
-#define COLOR_ACCENT  "\x05"
 
 const int MAX_API_RETRY = 2;
 
-char g_sApiKeys[2][128] =
-{
-    "8EC33C57EC1D4BBC1607035258142287",
-    "C7B3FC46E6E6D5C87700963F0688FCB4"
-};
+char g_sApiKey[128] = "8EC33C57EC1D4BBC1607035258142287";
 float g_fExp[MAXPLAYERS + 1];
 int   g_iState[MAXPLAYERS + 1];
 int   g_iRetryCount[MAXPLAYERS + 1];
-int   g_iApiKeyIndex[MAXPLAYERS + 1];
 bool  g_bLoadedMap[MAXPLAYERS + 1];
 
 int   g_iLocalPlayTime[MAXPLAYERS + 1];
@@ -108,7 +101,6 @@ public void OnClientPostAdminCheck(int client)
 
     g_bLoadedMap[client] = false;
     g_iRetryCount[client] = 0;
-    g_iApiKeyIndex[client] = 0;
 
     CreateTimer(2.0, Timer_LoadEXP, GetClientUserId(client));
 }
@@ -139,7 +131,6 @@ public void OnMapStart()
         g_iState[i] = 0;
         g_fExp[i] = 0.0;
         g_iRetryCount[i] = 0;
-        g_iApiKeyIndex[i] = 0;
         g_bLoadedMap[i] = false;
         g_bUsingLocalExp[i] = false;
     }
@@ -155,7 +146,6 @@ public void OnClientDisconnect(int client)
     g_iState[client] = 0;
     g_fExp[client] = 0.0;
     g_iRetryCount[client] = 0;
-    g_iApiKeyIndex[client] = 0;
     g_bLoadedMap[client] = false;
     g_bUsingLocalExp[client] = false;
 }
@@ -180,10 +170,8 @@ void RequestSteamData(int client)
     char url[512];
     Format(url, sizeof(url),
         "ISteamUserStats/GetUserStatsForGame/v0002/?appid=550&key=%s&steamid=%s&format=json",
-        g_sApiKeys[g_iApiKeyIndex[client]], steam64);
+        g_sApiKey, steam64);
 
-    PrintToServer("%s[EXP]%s %N 使用 Key%d 请求 Steam API",
-        COLOR_INFO, COLOR_DEFAULT, client, g_iApiKeyIndex[client] + 1);
     g_hSteamAPIClient.Get(url, OnSteamResponse, client);
 }
 
@@ -191,20 +179,6 @@ void HandleApiFailure(int client, const char[] reason)
 {
     if (!IsClientInGame(client))
         return;
-
-    if (g_iApiKeyIndex[client] == 0)
-    {
-        g_iApiKeyIndex[client] = 1;
-        g_iState[client] = 0;
-
-        PrintToServer("%s[EXP Key切换]%s %N Key1 失败(%s)，切换到 Key2 重试",
-            COLOR_ACCENT, COLOR_DEFAULT, client, reason);
-        PrintToChat(client, "%s[EXP]%s %sKey1 请求失败%s，正在切换到 %sKey2%s 重试...",
-            COLOR_GREEN, COLOR_DEFAULT, COLOR_RED, COLOR_DEFAULT, COLOR_LGREEN, COLOR_DEFAULT);
-
-        CreateTimer(0.3, Timer_RetryLoadEXP, GetClientUserId(client));
-        return;
-    }
 
     if (g_iRetryCount[client] < MAX_API_RETRY)
     {
@@ -300,17 +274,15 @@ void OnSteamResponse(HTTPResponse response, any client)
     float rawExp = (float(won) / float(won + lost)) *
                    (0.55 * (float(playtime) / 3600.0) + 0.005 * float(t1kill));
 
-    int usedKey = g_iApiKeyIndex[client] + 1;
     g_fExp[client] = float(RoundToFloor(rawExp));
     g_bUsingLocalExp[client] = false;
     g_iState[client] = 2;
     g_bLoadedMap[client] = true;
     g_iRetryCount[client] = 0;
-    g_iApiKeyIndex[client] = 0;
 
-    PrintToChatAll("%s[EXP]%s %s★%s %s%N%s : %s%d%s 经验评分 %s[API-Key%d]%s",
-        COLOR_GREEN, COLOR_DEFAULT, COLOR_YELLOW, COLOR_DEFAULT, COLOR_INFO, client, COLOR_DEFAULT,
-        COLOR_LGREEN, RoundToFloor(g_fExp[client]), COLOR_DEFAULT, COLOR_ACCENT, usedKey, COLOR_DEFAULT);
+    PrintToChatAll("%s[EXP]%s %s%N%s : %s%d%s经验评分 [API]",
+        COLOR_GREEN, COLOR_DEFAULT, COLOR_YELLOW, client, COLOR_DEFAULT,
+        COLOR_LGREEN, RoundToFloor(g_fExp[client]), COLOR_DEFAULT);
 }
 
 void UseLocalExp(int client)
@@ -329,9 +301,8 @@ void UseLocalExp(int client)
     g_iState[client] = 2;
     g_bLoadedMap[client] = true;
 
-    PrintToChat(client, "%s[EXP]%s %s你的经验值%s: %s%d%s 经验评分 %s[本地分析]%s",
-        COLOR_GREEN, COLOR_DEFAULT, COLOR_INFO, COLOR_DEFAULT,
-        COLOR_LGREEN, RoundToFloor(g_fExp[client]), COLOR_DEFAULT, COLOR_YELLOW, COLOR_DEFAULT);
+    PrintToChat(client, "%s[EXP]%s 你的经验值: %s%d%s经验评分 [本地分析]",
+        COLOR_GREEN, COLOR_DEFAULT, COLOR_LGREEN, RoundToFloor(g_fExp[client]), COLOR_DEFAULT);
 }
 
 public Action Cmd_Exp(int client, int args)
@@ -339,7 +310,7 @@ public Action Cmd_Exp(int client, int args)
     if (client <= 0 || !IsClientInGame(client))
         return Plugin_Handled;
 
-    PrintToChat(client, "%s==========%s[玩家经验值列表]%s==========", COLOR_GREEN, COLOR_ACCENT, COLOR_GREEN);
+    PrintToChat(client, "%s==========[玩家经验值列表]==========", COLOR_GREEN);
 
     bool hasPlayer = false;
     hasPlayer |= PrintExpTeamSection(client, TEAM_SURV, "【生还方】");
@@ -358,7 +329,7 @@ bool PrintExpTeamSection(int receiver, int team, const char[] title)
     bool found = false;
     int count = 0;
 
-    PrintToChat(receiver, "%s[EXP]%s %s%s", COLOR_GREEN, COLOR_DEFAULT, COLOR_ACCENT, title);
+    PrintToChat(receiver, "%s%s", COLOR_YELLOW, title);
 
     for (int i = 1; i <= MaxClients; i++)
     {
@@ -373,24 +344,24 @@ bool PrintExpTeamSection(int receiver, int team, const char[] title)
         {
             char mode[16];
             strcopy(mode, sizeof(mode), g_bUsingLocalExp[i] ? "本地" : "API");
-            Format(status, sizeof(status), "%s%d%s经验评分 %s[%s]%s",
-                COLOR_LGREEN, RoundToFloor(g_fExp[i]), COLOR_DEFAULT, COLOR_YELLOW, mode, COLOR_DEFAULT);
+            Format(status, sizeof(status), "%s%d%s经验评分 [%s]",
+                COLOR_LGREEN, RoundToFloor(g_fExp[i]), COLOR_DEFAULT, mode);
         }
         else if (g_iState[i] == 1)
         {
-            Format(status, sizeof(status), "%s加载中...%s (请求中)", COLOR_YELLOW, COLOR_DEFAULT);
+            Format(status, sizeof(status), "%s加载中...", COLOR_YELLOW);
         }
         else
         {
-            Format(status, sizeof(status), "%s未加载%s (等待请求)", COLOR_RED, COLOR_DEFAULT);
+            Format(status, sizeof(status), "%s未加载", COLOR_RED);
         }
 
-        PrintToChat(receiver, "%s[EXP]%s %s#%d%s %s%N%s : %s",
-            COLOR_GREEN, COLOR_DEFAULT, COLOR_ACCENT, count, COLOR_DEFAULT, COLOR_INFO, i, COLOR_DEFAULT, status);
+        PrintToChat(receiver, "%s[EXP]%s %d. %s%N%s : %s",
+            COLOR_GREEN, COLOR_DEFAULT, count, COLOR_YELLOW, i, COLOR_DEFAULT, status);
     }
 
     if (!found)
-        PrintToChat(receiver, "%s[EXP]%s %s无玩家", COLOR_GREEN, COLOR_DEFAULT, COLOR_RED);
+        PrintToChat(receiver, "%s[EXP]%s 无玩家", COLOR_GREEN, COLOR_DEFAULT);
 
     return found;
 }
@@ -447,8 +418,8 @@ public Action Cmd_MixExp(int client, int args)
     g_iMixVoteYes = 0;
     g_iMixVoteNo = 0;
 
-    PrintToChatAll("%s[EXP]%s %s⚑%s %s%N%s 发起了经验平衡投票！", COLOR_GREEN, COLOR_DEFAULT, COLOR_ACCENT, COLOR_DEFAULT, COLOR_INFO, client, COLOR_DEFAULT);
-    PrintToChatAll("%s[EXP]%s 按 %sF1%s 同意 / %sF2%s 反对 %s(20秒)%s", COLOR_GREEN, COLOR_DEFAULT, COLOR_LGREEN, COLOR_DEFAULT, COLOR_RED, COLOR_DEFAULT, COLOR_YELLOW, COLOR_DEFAULT);
+    PrintToChatAll("%s[EXP]%s %s%N%s 发起了经验平衡投票！", COLOR_GREEN, COLOR_DEFAULT, COLOR_YELLOW, client, COLOR_DEFAULT);
+    PrintToChatAll("%s[EXP]%s 按 F1 同意 / F2 反对 (20秒)", COLOR_GREEN, COLOR_DEFAULT);
 
     return Plugin_Handled;
 }
@@ -491,12 +462,12 @@ void ProcessMixVoteResult()
 
     if (yesPercent > 0.5 && g_iMixVoteYes > 0)
     {
-        PrintToChatAll("%s[EXP]%s %s✔%s 投票通过！正在执行队伍平衡...", COLOR_GREEN, COLOR_DEFAULT, COLOR_LGREEN, COLOR_DEFAULT);
+        PrintToChatAll("%s[EXP]%s 投票通过！正在执行队伍平衡...", COLOR_GREEN, COLOR_DEFAULT);
         ExecuteMixBalance();
     }
     else
     {
-        PrintToChatAll("%s[EXP]%s %s✘%s 投票未通过！", COLOR_GREEN, COLOR_DEFAULT, COLOR_RED, COLOR_DEFAULT);
+        PrintToChatAll("%s[EXP]%s 投票未通过！", COLOR_GREEN, COLOR_DEFAULT);
         g_bMixVoteInProgress = false;
         CleanupMixArrays();
     }
@@ -618,7 +589,7 @@ void ExecuteMixBalance()
     delete moveToSur;
     delete moveToInf;
 
-    PrintToChatAll("%s[EXP]%s %s★%s 队伍平衡完成！", COLOR_GREEN, COLOR_DEFAULT, COLOR_ACCENT, COLOR_DEFAULT);
+    PrintToChatAll("%s[EXP]%s 队伍平衡完成！", COLOR_GREEN, COLOR_DEFAULT);
     g_bMixVoteInProgress = false;
     CleanupMixArrays();
 }
