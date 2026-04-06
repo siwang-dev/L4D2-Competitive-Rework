@@ -10,13 +10,19 @@
 #define EXP_API_PATH "/getexp.php?steamid=%s"
 #define EXP_MAX_RETRY 3
 #define EXP_RETRY_DELAY 3.0
+#define TEAM_SPECTATOR 1
+#define TEAM_SURVIVOR 2
+#define TEAM_INFECTED 3
 
 HTTPClient g_hClient;
+ConVar g_cvSurvivorLimit;
+ConVar g_cvInfectedLimit;
 
 float g_fExp[MAXPLAYERS + 1];
 int g_iState[MAXPLAYERS + 1];
 int g_iRetryCount[MAXPLAYERS + 1];
 Handle g_hRetryTimer[MAXPLAYERS + 1];
+int g_iTargetTeam[MAXPLAYERS + 1];
 
 // =============================
 // 插件启动
@@ -24,11 +30,15 @@ Handle g_hRetryTimer[MAXPLAYERS + 1];
 public void OnPluginStart()
 {
     g_hClient = new HTTPClient(EXP_API_HOST);
+    g_cvSurvivorLimit = FindConVar("survivor_limit");
+    g_cvInfectedLimit = FindConVar("z_max_player_zombies");
 
     if (g_hClient == null)
     {
         SetFailState("[EXP] HTTPClient 创建失败");
     }
+
+    RegConsoleCmd("sm_exp", Command_Exp, "显示EXP分布，或使用 sm_exp balance 自动分队。");
 
     for (int i = 1; i <= MaxClients; i++)
     {
@@ -230,4 +240,285 @@ void ResetClientState(int client)
 bool IsValidClient(int client)
 {
     return (client > 0 && client <= MaxClients && IsClientInGame(client));
+}
+
+bool IsValidHuman(int client)
+{
+    return IsValidClient(client) && !IsFakeClient(client);
+}
+
+public Action Command_Exp(int client, int args)
+{
+    if (args > 0)
+    {
+        char arg1[32];
+        GetCmdArg(1, arg1, sizeof(arg1));
+        if (StrEqual(arg1, "balance", false) || StrEqual(arg1, "team", false))
+        {
+            return Command_BalanceExp(client);
+        }
+    }
+
+    return Command_ShowExp(client);
+}
+
+Action Command_ShowExp(int client)
+{
+    int survCount = 0;
+    int infCount = 0;
+    int specCount = 0;
+    float survTotal = 0.0;
+    float infTotal = 0.0;
+    float specTotal = 0.0;
+
+    for (int i = 1; i <= MaxClients; i++)
+    {
+        if (!IsValidHuman(i))
+            continue;
+
+        int team = GetClientTeam(i);
+        if (team == TEAM_SURVIVOR)
+        {
+            survCount++;
+            survTotal += g_fExp[i];
+        }
+        else if (team == TEAM_INFECTED)
+        {
+            infCount++;
+            infTotal += g_fExp[i];
+        }
+        else
+        {
+            specCount++;
+            specTotal += g_fExp[i];
+        }
+    }
+
+    float survAvg = survCount > 0 ? survTotal / float(survCount) : 0.0;
+    float infAvg = infCount > 0 ? infTotal / float(infCount) : 0.0;
+    float specAvg = specCount > 0 ? specTotal / float(specCount) : 0.0;
+
+    if (client > 0 && IsClientInGame(client))
+    {
+        ReplyToCommand(client, "[EXP] 生还方: %d人(均分%.0f) | 特感方: %d人(均分%.0f) | 旁观: %d人(均分%.0f)", survCount, survAvg, infCount, infAvg, specCount, specAvg);
+        ReplyToCommand(client, "[EXP] 输入 sm_exp balance 可按EXP自动分队。");
+    }
+    else
+    {
+        PrintToServer("[EXP] 生还方: %d人(均分%.0f) | 特感方: %d人(均分%.0f) | 旁观: %d人(均分%.0f)", survCount, survAvg, infCount, infAvg, specCount, specAvg);
+    }
+
+    return Plugin_Handled;
+}
+
+Action Command_BalanceExp(int client)
+{
+    int players[MAXPLAYERS];
+    int count = CollectBalancePlayers(players, sizeof(players));
+    if (count < 2)
+    {
+        ReplyToCommand(client, "[EXP] 人数不足，无法分队。");
+        return Plugin_Handled;
+    }
+
+    SortPlayersByExp(players, count);
+
+    int survivorLimit = g_cvSurvivorLimit != null ? g_cvSurvivorLimit.IntValue : 4;
+    int infectedLimit = g_cvInfectedLimit != null ? g_cvInfectedLimit.IntValue : 4;
+    int targetSurvivor = (count + 1) / 2;
+    int targetInfected = count / 2;
+
+    if (targetSurvivor > survivorLimit)
+    {
+        targetSurvivor = survivorLimit;
+        targetInfected = count - targetSurvivor;
+    }
+
+    if (targetInfected > infectedLimit)
+    {
+        targetInfected = infectedLimit;
+        targetSurvivor = count - targetInfected;
+        if (targetSurvivor > survivorLimit)
+            targetSurvivor = survivorLimit;
+    }
+
+    int assigned = targetSurvivor + targetInfected;
+    int targetSpectator = count - assigned;
+
+    int survivorCount = 0;
+    int infectedCount = 0;
+    float survivorTotal = 0.0;
+    float infectedTotal = 0.0;
+
+    for (int i = 0; i < count; i++)
+    {
+        int targetClient = players[i];
+        float exp = g_fExp[targetClient];
+        bool putSurvivor = false;
+
+        if (survivorCount >= targetSurvivor)
+        {
+            putSurvivor = false;
+        }
+        else if (infectedCount >= targetInfected)
+        {
+            putSurvivor = true;
+        }
+        else
+        {
+            putSurvivor = survivorTotal <= infectedTotal;
+        }
+
+        if (putSurvivor)
+        {
+            g_iTargetTeam[targetClient] = TEAM_SURVIVOR;
+            survivorCount++;
+            survivorTotal += exp;
+        }
+        else if (infectedCount < targetInfected)
+        {
+            g_iTargetTeam[targetClient] = TEAM_INFECTED;
+            infectedCount++;
+            infectedTotal += exp;
+        }
+        else
+        {
+            g_iTargetTeam[targetClient] = TEAM_SPECTATOR;
+        }
+    }
+
+    for (int i = 0; i < count; i++)
+    {
+        int targetClient = players[i];
+        if (GetClientTeam(targetClient) != TEAM_SPECTATOR)
+        {
+            ChangeClientTeam(targetClient, TEAM_SPECTATOR);
+        }
+    }
+
+    CreateTimer(0.35, Timer_ApplyExpBalance, _, TIMER_FLAG_NO_MAPCHANGE);
+
+    float survivorAvg = survivorCount > 0 ? survivorTotal / float(survivorCount) : 0.0;
+    float infectedAvg = infectedCount > 0 ? infectedTotal / float(infectedCount) : 0.0;
+    PrintToChatAll("[EXP] 分队完成: 生还 %d(均分%.0f) / 特感 %d(均分%.0f) / 旁观 %d。", survivorCount, survivorAvg, infectedCount, infectedAvg, targetSpectator);
+
+    if (client > 0 && IsClientInGame(client))
+    {
+        ReplyToCommand(client, "[EXP] 已执行自动分队。");
+    }
+
+    return Plugin_Handled;
+}
+
+public Action Timer_ApplyExpBalance(Handle timer)
+{
+    for (int client = 1; client <= MaxClients; client++)
+    {
+        if (!IsValidHuman(client) || g_iTargetTeam[client] == 0)
+            continue;
+
+        MoveClientToTeamSafe(client, g_iTargetTeam[client]);
+        g_iTargetTeam[client] = 0;
+    }
+
+    return Plugin_Stop;
+}
+
+int CollectBalancePlayers(int[] players, int maxSize)
+{
+    int count = 0;
+    for (int client = 1; client <= MaxClients && count < maxSize; client++)
+    {
+        if (!IsValidHuman(client))
+            continue;
+
+        int team = GetClientTeam(client);
+        if (team == TEAM_SURVIVOR || team == TEAM_INFECTED || team == TEAM_SPECTATOR)
+        {
+            players[count++] = client;
+        }
+    }
+
+    return count;
+}
+
+void SortPlayersByExp(int[] players, int count)
+{
+    for (int i = 0; i < count - 1; i++)
+    {
+        int best = i;
+        for (int j = i + 1; j < count; j++)
+        {
+            if (g_fExp[players[j]] > g_fExp[players[best]])
+            {
+                best = j;
+            }
+        }
+
+        if (best != i)
+        {
+            int tmp = players[i];
+            players[i] = players[best];
+            players[best] = tmp;
+        }
+    }
+}
+
+void MoveClientToTeamSafe(int client, int team)
+{
+    if (!IsValidHuman(client))
+        return;
+
+    if (team == TEAM_SURVIVOR)
+    {
+        MoveClientToSurvivorSafe(client);
+        return;
+    }
+
+    if (GetClientTeam(client) != team)
+    {
+        ChangeClientTeam(client, team);
+    }
+}
+
+void MoveClientToSurvivorSafe(int client)
+{
+    if (GetClientTeam(client) == TEAM_SURVIVOR)
+        return;
+
+    if (GetClientTeam(client) != TEAM_SPECTATOR)
+    {
+        ChangeClientTeam(client, TEAM_SPECTATOR);
+    }
+
+    int bot = FindAvailableSurvivorBot();
+    if (bot > 0)
+    {
+        int flags = GetCommandFlags("sb_takecontrol");
+        SetCommandFlags("sb_takecontrol", flags & ~FCVAR_CHEAT);
+        FakeClientCommand(client, "sb_takecontrol");
+        SetCommandFlags("sb_takecontrol", flags);
+    }
+    else
+    {
+        FakeClientCommand(client, "jointeam 2");
+    }
+
+    if (GetClientTeam(client) != TEAM_SURVIVOR)
+    {
+        ChangeClientTeam(client, TEAM_SURVIVOR);
+    }
+}
+
+int FindAvailableSurvivorBot()
+{
+    for (int client = 1; client <= MaxClients; client++)
+    {
+        if (IsValidClient(client) && IsFakeClient(client) && GetClientTeam(client) == TEAM_SURVIVOR)
+        {
+            return client;
+        }
+    }
+
+    return 0;
 }
