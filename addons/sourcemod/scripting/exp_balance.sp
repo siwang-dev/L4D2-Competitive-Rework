@@ -182,8 +182,6 @@ void RequestSteamData(int client)
         "ISteamUserStats/GetUserStatsForGame/v0002/?appid=550&key=%s&steamid=%s&format=json",
         g_sApiKeys[g_iApiKeyIndex[client]], steam64);
 
-    PrintToServer("%s[EXP]%s %N 使用 Key%d 请求 Steam API",
-        COLOR_INFO, COLOR_DEFAULT, client, g_iApiKeyIndex[client] + 1);
     g_hSteamAPIClient.Get(url, OnSteamResponse, client);
 }
 
@@ -199,8 +197,8 @@ void HandleApiFailure(int client, const char[] reason)
 
         PrintToServer("%s[EXP Key切换]%s %N Key1 失败(%s)，切换到 Key2 重试",
             COLOR_ACCENT, COLOR_DEFAULT, client, reason);
-        PrintToChat(client, "%s[EXP]%s %sKey1 请求失败%s，正在切换到 %sKey2%s 重试...",
-            COLOR_GREEN, COLOR_DEFAULT, COLOR_RED, COLOR_DEFAULT, COLOR_LGREEN, COLOR_DEFAULT);
+        PrintToChat(client, "%s[EXP]%s %sAPI 请求失败%s，正在自动重试...",
+            COLOR_GREEN, COLOR_DEFAULT, COLOR_RED, COLOR_DEFAULT);
 
         CreateTimer(0.3, Timer_RetryLoadEXP, GetClientUserId(client));
         return;
@@ -234,12 +232,14 @@ void OnSteamResponse(HTTPResponse response, any client)
     int status = view_as<int>(response.Status);
     if (status == 0)
     {
+        PrintToServer("%s[EXP 错误码]%s %N HTTP Status: %d", COLOR_RED, COLOR_DEFAULT, client, status);
         HandleApiFailure(client, "无法连接");
         return;
     }
 
     if (status != 200 || response.Data == null)
     {
+        PrintToServer("%s[EXP 错误码]%s %N HTTP Status: %d", COLOR_RED, COLOR_DEFAULT, client, status);
         char reason[64];
         Format(reason, sizeof(reason), "HTTP状态%d", status);
         HandleApiFailure(client, reason);
@@ -300,7 +300,6 @@ void OnSteamResponse(HTTPResponse response, any client)
     float rawExp = (float(won) / float(won + lost)) *
                    (0.55 * (float(playtime) / 3600.0) + 0.005 * float(t1kill));
 
-    int usedKey = g_iApiKeyIndex[client] + 1;
     g_fExp[client] = float(RoundToFloor(rawExp));
     g_bUsingLocalExp[client] = false;
     g_iState[client] = 2;
@@ -308,9 +307,9 @@ void OnSteamResponse(HTTPResponse response, any client)
     g_iRetryCount[client] = 0;
     g_iApiKeyIndex[client] = 0;
 
-    PrintToChatAll("%s[EXP]%s %s★%s %s%N%s : %s%d%s 经验评分 %s[API-Key%d]%s",
+    PrintToChatAll("%s[EXP]%s %s★%s %s%N%s : %s%d%s 经验评分 %s[API]%s",
         COLOR_GREEN, COLOR_DEFAULT, COLOR_YELLOW, COLOR_DEFAULT, COLOR_INFO, client, COLOR_DEFAULT,
-        COLOR_LGREEN, RoundToFloor(g_fExp[client]), COLOR_DEFAULT, COLOR_ACCENT, usedKey, COLOR_DEFAULT);
+        COLOR_LGREEN, RoundToFloor(g_fExp[client]), COLOR_DEFAULT, COLOR_ACCENT, COLOR_DEFAULT);
 }
 
 void UseLocalExp(int client)
